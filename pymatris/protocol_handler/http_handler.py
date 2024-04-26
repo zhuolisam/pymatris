@@ -226,14 +226,13 @@ class FTPHandler(ProtocolHandler):
         pb_callback=None,
         **kwargs,
     ):
-        pass
         filepath = writer = None
         chunksize = chunksize or config.chunksize
         parse = urllib.parse.urlparse(url)
         try:
-            async with aioftp.Client.context(parse.hostname) as client:
+            async with aioftp.Client.context(parse.hostname, parse.port) as client:
                 if parse.username and parse.password:
-                    await client.login(parse.username, parse.password)
+                    await client.login(user=parse.username, password=parse.password)
 
                 filepath = get_filepath(filepath_partial(None, url), overwrite)
 

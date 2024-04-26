@@ -31,13 +31,6 @@ def multipartserver():
     server.stop_server()
 
 
-# @pytest.fixture
-# def ftpserver(ftpserver):
-#     ftpserver.put_files()
-
-#     return ftpserver
-
-
 @pytest.fixture(scope="function")
 def sftp_server():
     server = SimpleSFTPServer(
