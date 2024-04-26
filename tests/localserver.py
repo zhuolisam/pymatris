@@ -1,5 +1,6 @@
 from typing import Callable, Optional
 from pytest_localserver.http import WSGIServer
+from pytest_sftpserver.sftp.server import SFTPServer
 
 
 class MultiPartServer:
@@ -61,25 +62,30 @@ class MultiPartServer:
         return self.app.url
 
 
-def intermittent_fail_handler(i, n, environ, start_response):
-    if i == n:
+def intermittent_fail_handler(i, cur, environ, start_response):
+    if i == cur:
         status = "404 Not Found"
         response_headers = [("Content-type", "text/plain")]
         start_response(status, response_headers)
         return [b""]
 
 
-def crash_handler(i, n, environ, start_response):
-    if i >= n:
+def crash_handler(i, cur, environ, start_response):
+    if i <= cur:
         status = "404 Not Found"
         response_headers = [("Content-type", "text/plain")]
         start_response(status, response_headers)
         return [b""]
 
 
-def fail_between_handler(start, end, n, environ, start_response):
-    if start <= n and n <= end:
+def fail_between_handler(start, end, cur, environ, start_response):
+    if start <= cur and cur <= end:
         status = "404 Not Found"
         response_headers = [("Content-type", "text/plain")]
         start_response(status, response_headers)
         return [b""]
+
+
+class SimpleSFTPServer:
+    def __init__(self, contents):
+        self.server = SFTPServer(content_object=contents)

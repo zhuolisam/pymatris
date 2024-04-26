@@ -1,8 +1,6 @@
 from collections import UserList, namedtuple
-
+from .utils import FailedDownload, MultiPartDownloadError
 import aiohttp
-
-from .utils import FailedDownload
 
 __all__ = ["Results"]
 
@@ -12,7 +10,7 @@ class Error(namedtuple("error", ("filepath_partial", "url", "exception"))):
         filepath_partial = ""
         if isinstance(self.filepath_partial, str):
             filepath_partial = f"{self.filepath_partial},\n"
-        return filepath_partial + f"{self.url},\n{self.exception}"
+        return filepath_partial + f"{self.url},\n{str(self.exception)}"
 
     def __repr__(self):
         return str(self)
@@ -33,26 +31,30 @@ class Results(UserList):
         self._errors = errors or list()
         self._urls = urls or list()
 
-    # def _get_nice_resp_repr(self, response):
-    #     # This is a modified version of aiohttp.ClientResponse.__repr__
-    #     if isinstance(response, aiohttp.ClientResponse):
-    #         ascii_encodable_url = str(response.url)
-    #         if response.reason:
-    #             ascii_encodable_reason = response.reason.encode(
-    #                 "ascii", "backslashreplace"
-    #             ).decode("ascii")
-    #         else:
-    #             ascii_encodable_reason = response.reason
-    #         return f"<ClientResponse({ascii_encodable_url}) [{response.status} {ascii_encodable_reason}]>"
-    #     else:
-    #         return repr(response)
+    def _get_nice_resp_repr(self, response):
+        # This is a modified version of aiohttp.ClientResponse.__repr__
+        if isinstance(response, aiohttp.ClientResponse):
+            ascii_encodable_url = str(response.url)
+            if response.reason:
+                ascii_encodable_reason = response.reason.encode(
+                    "ascii", "backslashreplace"
+                ).decode("ascii")
+            else:
+                ascii_encodable_reason = response.reason
+            return f"<ClientResponse({ascii_encodable_url}) [{response.status} {ascii_encodable_reason}]>"
+        else:
+            return repr(response)
 
     def __str__(self):
         out = super().__repr__()
         if self.errors:
             out += "\nErrors:\n"
             for error in self.errors:
-                out += f"({repr(error)})"
+                if isinstance(error.exception, aiohttp.ClientResponse):
+                    resp = self._get_nice_resp_repr(error.exception)
+                    out += f"(url={error.url}, response={resp})\n"
+                else:
+                    out += f"({repr(error)})"
         return out
 
     def __repr__(self):
@@ -63,11 +65,6 @@ class Results(UserList):
         self._urls.append(url)
 
     def add_error(self, filename, url, exception):
-        """
-        Add an error to the results.
-        """
-        if isinstance(exception, aiohttp.ClientResponse):
-            exception._headers = None
         self._errors.append(Error(filename, url, exception))
 
     @property

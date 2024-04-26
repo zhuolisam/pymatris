@@ -1,4 +1,4 @@
-from .localserver import MultiPartServer
+from .localserver import MultiPartServer, SimpleSFTPServer
 
 import pytest
 from pathlib import Path
@@ -38,6 +38,25 @@ def multipartserver():
 #     return ftpserver
 
 
+@pytest.fixture
+def sftp_server(sftpserver):
+    server = SimpleSFTPServer(
+        contents={"test_folder": {"testfile.txt": "Hello World From SFTP"}}
+    ).server
+    server.start()
+    yield server
+    server.shutdown()
+
+
 def validate_test_file(f, shasum):
-    assert Path(f).name == "testfile.txt"
     assert sha256sum(Path(f)) == shasum
+
+
+def validate_test_file_content(f, content):
+    with open(f) as downloaded:
+        assert downloaded.read() == content
+
+
+def compare_two_files(path1, path2):
+    with open(path1) as original, open(path2) as downloaded:
+        assert original.read() == downloaded.read()

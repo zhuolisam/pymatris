@@ -1,5 +1,6 @@
 from pymatris.utils import (
     FailedDownload,
+    FailedHTTPRequestError,
     MultiPartDownloadError,
     get_filepath,
     get_http_size,
@@ -7,6 +8,8 @@ from pymatris.utils import (
     cancel_task,
     remove_file,
     retry,
+    retry_sftp,
+    generate_range,
 )
 import asyncio
 from pymatris.write_worker import async_write_worker
@@ -47,6 +50,8 @@ class ProtocolHandler(ABC):
             return HTTPHandler()
         elif scheme == "ftp":
             return FTPHandler()
+        elif scheme == "sftp":
+            return SFTPHandler()
         else:
             raise ValueError(f"No handler available for scheme: {scheme}")
 
@@ -81,7 +86,8 @@ class HTTPHandler(ProtocolHandler):
         tasks = []
         try:
             resp, url = await self._get_download_info(config, session, url, **kwargs)
-            filepath = get_filepath(filepath_partial(resp, url), overwrite)
+            parse = urllib.parse.urlparse(url)
+            filepath = get_filepath(filepath_partial(resp, parse.path), overwrite)
 
             if callable(file_pb):
                 file_pb = file_pb(
@@ -107,12 +113,9 @@ class HTTPHandler(ProtocolHandler):
                 and "Content-length" in resp.headers
             ):
                 content_length = int(resp.headers["Content-length"])
-                split_length = max(1, content_length // max_splits)
-                ranges = [
-                    [start, start + split_length]
-                    for start in range(0, content_length, split_length)
-                ]
-                ranges[-1][1] = ""
+                ranges = generate_range(
+                    content_length=content_length, max_splits=max_splits
+                )
                 for _range in ranges:
                     tasks.append(
                         asyncio.create_task(
@@ -155,13 +158,32 @@ class HTTPHandler(ProtocolHandler):
             if filepath is not None:
                 remove_file(filepath)
 
-            # Wrap the leaf exception in a FailedDownload exception, all handlers will raise this should anything go wrong. So it will be like FailedDownload(filepath_partial, url, FailedDownload(None, url, response)) or FailedDownload(filepath_partial, url, MultipartError(None, url, response))
+            # Wrap the leaf exception in a FailedDownload exception, all handlers will raise this should anything go wrong. So it will be like FailedDownload(filepath_partial, url, FailedDownload(None, url, response)) or FailedDownload(filepath_partial, url)
             # It can also be FailedDownload(filepath_partial, url, aiohttp.ClientError)
-            raise FailedDownload(filepath_partial, url, e)
+            raise FailedDownload(filepath_partial, url, e) from e
         finally:
+            # Cancel idle writer
             if writer is not None:
                 writer.cancel()
             pb_callback(file_pb)
+
+    @retry
+    async def _get_download_info(self, config, session, url, **kwargs):
+        additional_headers = kwargs.pop("headers", {})
+        headers = {**config.headers, **additional_headers}
+        # Might get no response at all, which is likely a client error, including ssl, proxy, auth, etc.
+        # But they are handled in retry decorator.
+        async with session.head(
+            url,
+            timeout=config.timeouts,
+            headers=headers,
+            allow_redirects=True,
+            **kwargs,
+        ) as resp:
+            if resp.status < 200 or resp.status >= 400:
+                raise FailedHTTPRequestError(resp)
+            redirectUrl = resp.headers.get("Location", url)
+            return resp, redirectUrl
 
     @retry
     async def _download_worker(
@@ -178,7 +200,7 @@ class HTTPHandler(ProtocolHandler):
 
         async with session.get(url, timeout=config.timeouts, headers=headers) as resp:
             if resp.status < 200 or resp.status >= 300:
-                raise FailedDownload(None, url, MultiPartDownloadError(resp))
+                raise MultiPartDownloadError(resp)
 
             while True:
                 chunk = await resp.content.read(chunksize)
@@ -186,24 +208,6 @@ class HTTPHandler(ProtocolHandler):
                     break
                 await queue.put((offset, chunk))
                 offset += len(chunk)
-
-    @retry
-    async def _get_download_info(self, config, session, url, **kwargs):
-        additional_headers = kwargs.pop("headers", {})
-        headers = {**config.headers, **additional_headers}
-        # Might get no response at all, which is likely a client error, including ssl, proxy, auth, etc.
-        # But they are handled in retry decorator.
-        async with session.head(
-            url,
-            timeout=config.timeouts,
-            headers=headers,
-            allow_redirects=True,
-            **kwargs,
-        ) as resp:
-            if resp.status < 200 or resp.status >= 400:
-                raise FailedDownload(None, url, resp)
-            redirectUrl = resp.headers.get("Location", url)
-            return resp, redirectUrl
 
 
 class FTPHandler(ProtocolHandler):
@@ -216,20 +220,24 @@ class FTPHandler(ProtocolHandler):
         overwrite,
         token,
         file_pb=None,
+        chunksize=None,
+        max_splits=None,
+        max_tries=None,
         pb_callback=None,
         **kwargs,
     ):
         pass
         filepath = writer = None
+        chunksize = chunksize or config.chunksize
         parse = urllib.parse.urlparse(url)
-        print("What is the url??", url)
-        print(parse)
         try:
-            async with aioftp.Client.context(parse.hostname, **kwargs) as client:
-                await client.login(parse.username, parse.password)
+            async with aioftp.Client.context(parse.hostname) as client:
+                if parse.username and parse.password:
+                    await client.login(parse.username, parse.password)
 
-                # Get the filepath
                 filepath = get_filepath(filepath_partial(None, url), overwrite)
+
+                total_size = await get_ftp_size(client, parse.path)
 
                 if callable(file_pb):
                     total_size = await get_ftp_size(client, parse.path)
@@ -253,7 +261,9 @@ class FTPHandler(ProtocolHandler):
 
                     download_workers.append(
                         asyncio.create_task(
-                            self._download_worker(stream, downloaded_chunks_queue)
+                            self._download_worker(
+                                stream, chunksize, downloaded_chunks_queue
+                            )
                         )
                     )
 
@@ -279,9 +289,9 @@ class FTPHandler(ProtocolHandler):
                 writer.cancel()
             pb_callback(file_pb)
 
-    async def _download_worker(self, stream, queue):
+    async def _download_worker(self, stream, chunksize, queue):
         offset = 0
-        async for chunk in stream.iter_by_block():
+        async for chunk in stream.iter_by_block(chunksize):
             # Write this chunk to the output file.
             await queue.put((offset, chunk))
             offset += len(chunk)
@@ -291,79 +301,115 @@ class SFTPHandler(ProtocolHandler):
     async def run_download(
         self,
         config,
-        *,
+        session,
         url,
         filepath_partial,
         overwrite,
         token,
-        chunksize=None,
         file_pb=None,
+        chunksize=None,
+        max_splits=None,
+        max_tries=None,
         pb_callback=None,
         **kwargs,
     ):
-        filepath = writer = None
+        filepath = writer = conn = sftp_client = file = None
         chunksize = chunksize or config.chunksize
+        max_splits = max_splits or config.max_splits
+        kwargs["max_tries"] = max_tries or config.max_tries
+        kwargs["url"] = url
+
         parse = urllib.parse.urlparse(url)
         try:
-            async with asyncssh.connect(
-                parse.hostname,
-                username=parse.username,
-                password=parse.password,
-                **kwargs,
-            ) as conn:
-                async with conn.start_sftp_client() as sftp:
-                    # Ensure we get the correct path and handle overwriting
-                    filepath = get_filepath(filepath_partial(None, url), overwrite)
+            conn, sftp_client = await self._connect_host(parse, **kwargs)
+            # async with asyncssh.connect(
+            #     parse.hostname,
+            #     username=parse.username,
+            #     password=parse.password,
+            #     port=parse.port or 22,
+            #     known_hosts=None,
+            #     **kwargs,
+            # ) as conn:
+            #     async with conn.start_sftp_client() as sftp:
+            filepath = get_filepath(filepath_partial(None, url), overwrite)
 
-                    # Optionally handle progress bar setup
-                    if callable(file_pb):
-                        file_attrs = await sftp.stat(parse.path)
-                        total_size = file_attrs.size
-                        file_pb = file_pb(
-                            position=token.n,
-                            unit="B",
-                            unit_scale=True,
-                            desc=filepath.name,
-                            leave=False,
-                            total=total_size,
+            # Can throw FileNotFoundError
+            total_size = await get_ftp_size(sftp_client, parse.path)
+
+            if callable(file_pb) and total_size:
+                file_pb = file_pb(
+                    position=token.n,
+                    unit="B",
+                    unit_scale=True,
+                    desc=filepath.name,
+                    leave=False,
+                    total=total_size,
+                )
+            else:
+                file_pb = None
+
+            # Generate tasks to read into queue
+            ranges = generate_range(content_length=total_size, max_splits=max_splits)
+            file = await sftp_client.open(parse.path, "rb")
+            downloaded_chunks_queue = asyncio.Queue()
+            writer = asyncio.create_task(
+                async_write_worker(downloaded_chunks_queue, file_pb, filepath)
+            )
+            tasks = []
+            for _range in ranges:
+                tasks.append(
+                    asyncio.create_task(
+                        self._download_worker(
+                            file, _range[0], chunksize, downloaded_chunks_queue
                         )
-                    else:
-                        file_pb = None
-
-                    # Setting up the writer and the queue
-                    downloaded_chunks_queue = asyncio.Queue()
-                    writer = asyncio.create_task(
-                        async_write_worker(downloaded_chunks_queue, file_pb, filepath)
                     )
+                )
 
-                    # Read the file in chunks
-                    async with sftp.open(parse.path, "rb") as file:
-                        while True:
-                            chunk = await file.read(chunksize or 4096)
-                            if not chunk:
-                                break
-                            await downloaded_chunks_queue.put(chunk)
+            await asyncio.gather(*tasks)
+            await downloaded_chunks_queue.join()  # Ensure all chunks are written
 
-                    await (
-                        downloaded_chunks_queue.join()
-                    )  # Ensure all chunks are written
-
-                    for callback in self.config.done_callbacks:
-                        callback(filepath, url, None)
-
-                    return url, str(filepath)
+            await file.close()
+            sftp_client.exit()
+            conn.close()
+            return url, str(filepath)
 
         except (Exception, asyncio.CancelledError) as e:
-            if writer is not None:
+            if writer:
                 await cancel_task(writer)
                 writer = None
-            if filepath is not None:
+            if filepath:
                 remove_file(filepath)
                 filepath = None
-
-            raise FailedDownload(filepath_partial, url, e)
-
+            if file is not None:
+                await file.close()
+            if sftp_client is not None:
+                sftp_client.exit()
+            if conn is not None:
+                conn.close()
+            raise FailedDownload(filepath_partial, url, e) from e
         finally:
-            if writer is not None:
+            if writer:
                 writer.cancel()
-            pb_callback()
+            pb_callback(file_pb)
+
+    async def _download_worker(self, file, offset, chunksize, queue):
+        while True:
+            await file.seek(offset)
+            chunk = await file.read(chunksize)
+            if not chunk:
+                break
+            await queue.put((offset, chunk))
+            offset += len(chunk)
+
+    @retry_sftp
+    async def _connect_host(self, parse, **kwargs):
+        conn = await asyncssh.connect(
+            parse.hostname,
+            username=parse.username,
+            password=parse.password,
+            port=parse.port or 22,
+            known_hosts=None,
+            # **kwargs,
+        )
+        sftp_client = await conn.start_sftp_client()
+        return conn, sftp_client

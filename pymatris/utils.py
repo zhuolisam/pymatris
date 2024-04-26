@@ -7,6 +7,7 @@ from itertools import count
 import asyncio
 import warnings
 import hashlib
+import asyncssh
 from tqdm import tqdm as tqdm_std
 import socket
 from concurrent.futures import ThreadPoolExecutor
@@ -102,19 +103,23 @@ def get_http_size(resp: aiohttp.ClientResponse) -> Union[int, None]:
     return int(size) if size else size
 
 
-async def get_ftp_size(client: "aioftp.Client", filepath: os.PathLike) -> int:
+async def get_ftp_size(
+    client: Union["aioftp.Client", asyncssh.SFTPClient], filepath: os.PathLike
+) -> int:
     try:
-        size = await client.stat(filepath)
-        size = size.get("size", None)
-    except Exception:
-        tqdm_std.write("Failed to get size of FTP file")
-        size = None
+        attr = await client.stat(filepath)
+        if isinstance(client, aioftp.Client):
+            size = attr.get("size", None)
+        else:
+            size = attr.size
+    except Exception as e:
+        raise e
     return int(size) if size else size
 
 
 class FailedDownload(Exception):
     def __init__(
-        self, filepath_partial: pathlib.Path, url: str, exception: BaseException
+        self, filepath_partial: pathlib.Path, url: str, exception: Exception
     ) -> None:
         self.filepath_partial = filepath_partial
         self.url = url
@@ -131,8 +136,51 @@ class FailedDownload(Exception):
 
 
 class MultiPartDownloadError(Exception):
-    def __init__(self, response: aiohttp.ClientResponse) -> None:
+    def __init__(
+        self, response: aiohttp.ClientResponse, retry_count: int, max_retries: int
+    ):
         self.response = response
+        self.retry_count = retry_count
+        self.max_retries = max_retries
+        super.__init__(str(response))
+
+    def __str__(self) -> str:
+        if self.retry_count and self.max_retries:
+            return "{} with network response {} on ({}/{}) retry \n".format(
+                self.__class__,
+                str(self.response),
+                str(self.retry_count),
+                str(self.max_retries),
+            )
+        else:
+            return "{} with network response {} on (NIL) retry retry \n".format(
+                self.__class__,
+                str(self.response),
+            )
+
+
+class FailedHTTPRequestError(Exception):
+    def __init__(
+        self, response: aiohttp.ClientResponse, retry_count: int, max_retries: int
+    ):
+        self.response = response
+        self.retry_count = retry_count
+        self.max_retries = max_retries
+        super.__init__(str(response))
+
+    def __str__(self) -> str:
+        if self.retry_count and self.max_retries:
+            return "{} with network response {} on ({}/{}) retry \n".format(
+                self.__class__,
+                str(self.response),
+                str(self.retry_count),
+                str(self.max_retries),
+            )
+        else:
+            return "{} with network response {} on (NIL) retry retry \n".format(
+                self.__class__,
+                str(self.response),
+            )
 
 
 async def cancel_task(task: asyncio.Task) -> bool:
@@ -164,43 +212,6 @@ def sha256sum(filename: str) -> str:
     return h.hexdigest()
 
 
-async def retry2(max_tries: int = 5):
-    def retry_max(coro_func):
-        async def wrapper(self, *args, **kwargs):
-            tried = 0
-            while True:
-                tried += 1
-                try:
-                    return await coro_func(self, *args, **kwargs)
-                except (FailedDownload, aiohttp.ClientError, socket.gaierror) as exc:
-                    if tried <= max_tries:
-                        sec = tried / 2
-                        tqdm_std.write(
-                            "%s() failed: retry in %.1f seconds (%d/%d)"
-                            % (coro_func.__name__, sec, tried, max_tries)
-                        )
-                        await asyncio.sleep(sec)
-                    else:
-                        tqdm_std.write(
-                            "%s() failed after %d tries: "
-                            % (coro_func.__name__, max_tries)
-                        )
-                        raise exc
-                except asyncio.TimeoutError:
-                    # Usually server has a fixed TCP timeout to clean dead
-                    # connections, so you can see a lot of timeouts appear
-                    # at the same time. I don't think this is an error,
-                    # So retry it without checking the max retries.
-                    tqdm_std.write(
-                        "%s() timeout, retry in 1 second" % coro_func.__name__
-                    )
-                    await asyncio.sleep(1)
-
-        return wrapper
-
-    return retry_max
-
-
 def retry(coro_func):
     async def wrapper(self, *args, **kwargs):
         max_tries = kwargs.pop(
@@ -213,6 +224,48 @@ def retry(coro_func):
             try:
                 return await coro_func(self, *args, **kwargs)
             except (FailedDownload, aiohttp.ClientError, socket.gaierror) as exc:
+                if tried < max_tries:
+                    # Exponential backoff
+                    sec = tried / 2
+                    tqdm_std.write(
+                        "%s(%s) failed: retry in %.1f seconds (%d/%d)"
+                        % (coro_func.__name__, cur_url, sec, tried, max_tries)
+                    )
+                    await asyncio.sleep(sec)
+                else:
+                    tqdm_std.write(
+                        "%s(%s) failed after %d tries: "
+                        % (coro_func.__name__, cur_url, max_tries)
+                    )
+                    if isinstance(
+                        exec, (MultiPartDownloadError, FailedHTTPRequestError)
+                    ):
+                        exec.retry = tried
+                        exec.max_retries = max_tries
+                    raise exc
+            except asyncio.TimeoutError:
+                # Usually server has a fixed TCP timeout to clean dead
+                # connections, so you can see a lot of timeouts appear
+                # at the same time. I don't think this is an error,
+                # So retry it without checking the max retries.
+                tqdm_std.write("%s() timeout, retry in 1 second" % coro_func.__name__)
+                await asyncio.sleep(1)
+
+    return wrapper
+
+
+def retry_sftp(coro_func):
+    async def wrapper(self, *args, **kwargs):
+        max_tries = kwargs.pop(
+            "max_tries"
+        )  # Have to use this workaround to get the max_tries without using parameterized decorator
+        cur_url = kwargs.pop("url")  # Get URL
+        tried = 0
+        while True:
+            tried += 1
+            try:
+                return await coro_func(self, *args, **kwargs)
+            except (Exception, socket.gaierror) as exc:
                 if tried < max_tries:
                     # Exponential backoff
                     sec = tried / 2
@@ -252,3 +305,18 @@ def run_task_in_thread(loop: asyncio.BaseEventLoop, coro: asyncio.Task):
         except KeyboardInterrupt:
             future.cancel()
     return future.result()
+
+
+def generate_range(content_length, max_splits):
+    if not max_splits or max_splits < 1:
+        max_splits = 1
+        tqdm_std.write("Max Splits cannot be smaller than 1")
+
+    split_length = max(1, content_length // max_splits)
+    ranges = [
+        [start, start + split_length]
+        for start in range(0, content_length, split_length)
+    ]
+    ranges[-1][1] = ""
+
+    return ranges

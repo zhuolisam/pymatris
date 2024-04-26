@@ -27,7 +27,6 @@ class _QueueList(List[_T]):
         queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
         for item in self:
             queue.put_nowait(item)
-        self.clear()
         return queue
 
 
@@ -123,7 +122,8 @@ class Downloader:
                 main_pb.write(message)
             else:
                 # pymatris.log.info(message)
-                print(message)
+                print("Yoo", message)
+                pass
 
         results = Results()
         for res in dl_results:
@@ -230,16 +230,6 @@ class Downloader:
 
     @staticmethod
     def _add_signal_handler(loop, task):
-        if os.name == "nt":
-            return
-
-        if threading.current_thread() != threading.main_thread():
-            warnings.warn(
-                "Launched in separated thread, unable to cancel task",
-                UserWarning,
-            )
-            return
-
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, task.cancel)
 
