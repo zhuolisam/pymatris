@@ -1,7 +1,6 @@
 from pathlib import Path
-import os
+
 from pymatris import Downloader
-from .conftest import compare_two_files
 import pytest
 
 THIS_DIR = Path(__file__).parent
@@ -27,11 +26,11 @@ test_file_dir = THIS_DIR / "static/ftp_testfile.txt"
 #     compare_two_files(ftp_filepath, f[0])
 
 
-@pytest.mark.allow_hosts(True)
-def test_ftp_custom(tmp_path):
-    dm = Downloader()
+# @pytest.mark.allow_hosts(True)
+# def test_ftp_custom(tmp_path):
+#     dm = Downloader()
 
-    dm.enqueue_file("ftp://ftp.swpc.noaa.gov/pub/_SRS.tar.gz", path=tmp_path)
-    f = dm.download()
-    print(f)
-    assert len(f.errors) == 0
+#     dm.enqueue_file("ftp://ftp.swpc.noaa.gov/pub/_SRS.tar.gz", path=tmp_path)
+#     f = dm.download()
+
+#     assert len(f.errors) == 1

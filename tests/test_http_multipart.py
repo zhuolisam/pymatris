@@ -81,5 +81,5 @@ def test_multipartserver_exceeds_max_tries(
     assert len(f.errors) == 1
     assert (
         multipartserver.request_number == expected
-    )  # 1 head request + 1 splits + (4 * max_retries)
+    )  # 1 head request + 1 splits + (4 * max_tries)
     assert not any(tmp_path.iterdir())

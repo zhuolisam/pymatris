@@ -86,7 +86,3 @@ class Results(UserList):
 
         """
         return self._urls
-
-    # @property
-    # def paths(self):
-    #     return super()

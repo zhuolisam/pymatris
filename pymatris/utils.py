@@ -137,12 +137,15 @@ class FailedDownload(Exception):
 
 class MultiPartDownloadError(Exception):
     def __init__(
-        self, response: aiohttp.ClientResponse, retry_count: int, max_retries: int
+        self,
+        response: aiohttp.ClientResponse,
+        retry_count: int = None,
+        max_retries: int = None,
     ):
         self.response = response
         self.retry_count = retry_count
         self.max_retries = max_retries
-        super.__init__(str(response))
+        super().__init__(str(response))
 
     def __str__(self) -> str:
         if self.retry_count and self.max_retries:
@@ -161,12 +164,15 @@ class MultiPartDownloadError(Exception):
 
 class FailedHTTPRequestError(Exception):
     def __init__(
-        self, response: aiohttp.ClientResponse, retry_count: int, max_retries: int
+        self,
+        response: aiohttp.ClientResponse = None,
+        retry_count: int = None,
+        max_retries: int = None,
     ):
         self.response = response
         self.retry_count = retry_count
         self.max_retries = max_retries
-        super.__init__(str(response))
+        super().__init__(str(response))
 
     def __str__(self) -> str:
         if self.retry_count and self.max_retries:
@@ -223,7 +229,12 @@ def retry(coro_func):
             tried += 1
             try:
                 return await coro_func(self, *args, **kwargs)
-            except (FailedDownload, aiohttp.ClientError, socket.gaierror) as exc:
+            except (
+                MultiPartDownloadError,
+                FailedHTTPRequestError,
+                aiohttp.ClientError,
+                socket.gaierror,
+            ) as exc:
                 if tried < max_tries:
                     # Exponential backoff
                     sec = tried / 2

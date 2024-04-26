@@ -5,7 +5,7 @@ from pathlib import Path
 from pymatris.utils import sha256sum
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def singlepartserver(httpserver):
     httpserver.serve_content(
         b"Hello World!",
@@ -16,7 +16,7 @@ def singlepartserver(httpserver):
     return httpserver
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def singlepartserverfail(httpserver):
     httpserver.serve_content("File not found!", 404)
     return httpserver
@@ -38,8 +38,8 @@ def multipartserver():
 #     return ftpserver
 
 
-@pytest.fixture
-def sftp_server(sftpserver):
+@pytest.fixture(scope="function")
+def sftp_server():
     server = SimpleSFTPServer(
         contents={"test_folder": {"testfile.txt": "Hello World From SFTP"}}
     ).server
