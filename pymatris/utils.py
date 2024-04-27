@@ -1,16 +1,18 @@
 import os
 import pathlib
+import asyncio
 import aiohttp
 import aioftp
+import asyncssh
 from typing import Generator, Tuple, Dict, Union
 from itertools import count
-import asyncio
 import warnings
 import hashlib
-import asyncssh
 from tqdm import tqdm as tqdm_std
 import socket
 from concurrent.futures import ThreadPoolExecutor
+from .exceptions import FailedHTTPRequestError, MultiPartDownloadError
+import pymatris
 
 
 def default_name(
@@ -60,10 +62,15 @@ def _parseparam(s: str) -> Generator[str, None, None]:
 
 
 def replacement_filename(path: os.PathLike) -> pathlib.Path:  # type: ignore[return]
-    path = pathlib.Path(path)
+    """Create replacement for a filepath
 
-    if not path.exists():
-        return path
+    Args:
+        path (os.PathLike): original filepath
+
+    Returns:
+        pathlib.Path: replacement filepath
+    """
+    path = pathlib.Path(path)
 
     suffix = "".join(path.suffixes)
     for c in count(start=1):
@@ -73,8 +80,72 @@ def replacement_filename(path: os.PathLike) -> pathlib.Path:  # type: ignore[ret
             name = path.name
         new_name = f"{name}.{c}{suffix}"
         new_path = path.parent / new_name
-        if not new_path.exists():
+        tmp_path = new_path.parent / (new_path.name + ".matris")
+        if not new_path.exists() and not tmp_path.exists():
             return new_path
+
+
+def allocate_tempfile(path: os.PathLike) -> pathlib.Path:
+    """Takes in original filepath, allocate the tempfile
+
+    Args:
+        path (os.PathLike): tempfile's path
+
+    Returns:
+        pathlib.Path: originalfile's path
+    """
+    path = pathlib.Path(path)
+
+    if not path:
+        pymatris.log.warning("No path given, cannot allocate tempfile ")
+        return path
+
+    tempfile_suffix = ".matris"
+    tempfile = path.parent / (path.name + tempfile_suffix)
+    open(str(tempfile), "a").close()  # occupy the tempfile
+    return tempfile
+
+
+def replace_tempfile(path: os.PathLike) -> pathlib.Path:
+    """Takes in the tempfile, try to remove the tempfile, then replace
+
+    Args:
+        path (os.PathLike): tempfile's path
+
+    Returns:
+        pathlib.Path: originalfile's path
+    """
+    if not path:
+        return None
+
+    tempfile_path = pathlib.Path(path)
+    originalfile_path = tempfile_path.parent / tempfile_path.stem
+
+    if not tempfile_path.exists():
+        return originalfile_path
+
+    if originalfile_path.exists():
+        remove_file(str(originalfile_path))
+
+    return replace_file(tempfile_path, originalfile_path)
+
+
+def remove_file(filepath: os.PathLike) -> None:
+    filepath = pathlib.Path(filepath)
+    try:
+        filepath.unlink(missing_ok=True)
+    except Exception as remove_exception:
+        warnings.warn(f"Failed to delete {filepath} {remove_exception}")
+        pymatris.log.warning(f"Failed to delete {filepath} {remove_exception}")
+
+
+def replace_file(old_path: pathlib.Path, new_path: pathlib.Path) -> pathlib.Path:
+    try:
+        old_path.replace(new_path)
+        return new_path
+    except Exception as rename_exception:
+        warnings.warn(f"Failed to replace {old_path} {rename_exception}")
+        pymatris.log.warning(f"Failed to replace {old_path} {rename_exception}")
 
 
 def get_filepath(
@@ -85,17 +156,30 @@ def get_filepath(
 
     Returns
     -------
-    `pathlib.Path`, `bool`
+    `pathlib.Path`, `pathlib.Path`
     """
     filepath = pathlib.Path(filepath)
-    if filepath.exists():
-        if not overwrite:  # if not overwrite, then create a replacement filename
-            filepath = replacement_filename(filepath)
+    tempfile_path = filepath.parent / (filepath.name + ".matris")  # xxxx.txt.matris
+    finalpath = None
 
-    if not filepath.parent.exists():
-        filepath.parent.mkdir(parents=True)
+    if not filepath.exists() and not tempfile_path.exists():
+        finalpath = filepath
 
-    return filepath
+    # if tempfile exists, the tempfile already allocated
+    elif tempfile_path.exists():
+        finalpath = replacement_filename(str(filepath))
+
+    # if file exists but no tempfile allocated, can choose to overwrite
+    elif filepath.exists():
+        if not overwrite:
+            finalpath = replacement_filename(str(filepath))
+        elif overwrite:
+            finalpath = filepath
+
+    if not finalpath.exists():
+        finalpath.parent.mkdir(parents=True, exist_ok=True)
+
+    return finalpath
 
 
 def get_http_size(resp: aiohttp.ClientResponse) -> Union[int, None]:
@@ -117,78 +201,6 @@ async def get_ftp_size(
     return int(size) if size else size
 
 
-class FailedDownload(Exception):
-    def __init__(
-        self, filepath_partial: pathlib.Path, url: str, exception: Exception
-    ) -> None:
-        self.filepath_partial = filepath_partial
-        self.url = url
-        self.exception = exception
-        super().__init__()
-
-    def __repr__(self) -> str:
-        out = super().__repr__()
-        out += f"\n {self.url} {self.exception}"
-        return out
-
-    def __str__(self) -> str:
-        return f"Download Failed: {self.url} with error {str(self.exception)}"
-
-
-class MultiPartDownloadError(Exception):
-    def __init__(
-        self,
-        response: aiohttp.ClientResponse,
-        retry_count: int = None,
-        max_retries: int = None,
-    ):
-        self.response = response
-        self.retry_count = retry_count
-        self.max_retries = max_retries
-        super().__init__(str(response))
-
-    def __str__(self) -> str:
-        if self.retry_count and self.max_retries:
-            return "{} with network response {} on ({}/{}) retry \n".format(
-                self.__class__,
-                str(self.response),
-                str(self.retry_count),
-                str(self.max_retries),
-            )
-        else:
-            return "{} with network response {} on (NIL) retry retry \n".format(
-                self.__class__,
-                str(self.response),
-            )
-
-
-class FailedHTTPRequestError(Exception):
-    def __init__(
-        self,
-        response: aiohttp.ClientResponse = None,
-        retry_count: int = None,
-        max_retries: int = None,
-    ):
-        self.response = response
-        self.retry_count = retry_count
-        self.max_retries = max_retries
-        super().__init__(str(response))
-
-    def __str__(self) -> str:
-        if self.retry_count and self.max_retries:
-            return "{} with network response {} on ({}/{}) retry \n".format(
-                self.__class__,
-                str(self.response),
-                str(self.retry_count),
-                str(self.max_retries),
-            )
-        else:
-            return "{} with network response {} on (NIL) retry retry \n".format(
-                self.__class__,
-                str(self.response),
-            )
-
-
 async def cancel_task(task: asyncio.Task) -> bool:
     task.cancel()
     try:
@@ -196,16 +208,6 @@ async def cancel_task(task: asyncio.Task) -> bool:
     except asyncio.CancelledError:
         return True
     return task.cancelled()
-
-
-def remove_file(filepath: os.PathLike) -> None:
-    filepath = pathlib.Path(filepath)
-    try:
-        filepath.unlink(missing_ok=True)
-    except Exception as remove_exception:
-        warnings.warn(
-            f"Failed to delete possibly incomplete file {filepath} {remove_exception}"
-        )
 
 
 def sha256sum(filename: str) -> str:
@@ -238,16 +240,24 @@ def retry(coro_func):
                 if tried < max_tries:
                     # Exponential backoff
                     sec = tried / 2
-                    tqdm_std.write(
-                        "%s(%s) failed: retry in %.1f seconds (%d/%d)"
-                        % (coro_func.__name__, cur_url, sec, tried, max_tries)
+                    message = "%s(%s) failed: retry in %.1f seconds (%d/%d)" % (
+                        coro_func.__name__,
+                        cur_url,
+                        sec,
+                        tried,
+                        max_tries,
                     )
+                    tqdm_std.write(message)
+                    pymatris.log.debug(message)
                     await asyncio.sleep(sec)
                 else:
-                    tqdm_std.write(
-                        "%s(%s) failed after %d tries: "
-                        % (coro_func.__name__, cur_url, max_tries)
+                    message = "%s(%s) failed after %d tries: " % (
+                        coro_func.__name__,
+                        cur_url,
+                        max_tries,
                     )
+                    tqdm_std.write(message)
+                    pymatris.log.debug(message)
                     if isinstance(
                         exec, (MultiPartDownloadError, FailedHTTPRequestError)
                     ):
@@ -276,26 +286,34 @@ def retry_sftp(coro_func):
             tried += 1
             try:
                 return await coro_func(self, *args, **kwargs)
-            except (Exception, socket.gaierror) as exc:
+            except (asyncssh.SFTPError, socket.gaierror) as exc:
                 if tried < max_tries:
                     # Exponential backoff
                     sec = tried / 2
-                    tqdm_std.write(
-                        "%s(%s) failed: retry in %.1f seconds (%d/%d)"
-                        % (coro_func.__name__, cur_url, sec, tried, max_tries)
+                    message = "%s(%s) failed: retry in %.1f seconds (%d/%d)" % (
+                        coro_func.__name__,
+                        cur_url,
+                        sec,
+                        tried,
+                        max_tries,
                     )
+                    tqdm_std.write(message)
+                    pymatris.log.debug(message)
                     await asyncio.sleep(sec)
                 else:
-                    tqdm_std.write(
-                        "%s(%s) failed after %d tries: "
-                        % (coro_func.__name__, cur_url, max_tries)
+                    message = "%s(%s) failed after %d tries: " % (
+                        coro_func.__name__,
+                        cur_url,
+                        max_tries,
                     )
+                    tqdm_std.write(message)
+                    pymatris.log.debug(message)
                     raise exc
             except asyncio.TimeoutError:
                 # Usually server has a fixed TCP timeout to clean dead
                 # connections, so you can see a lot of timeouts appear
-                # at the same time. I don't think this is an error,
-                # So retry it without checking the max retries.
+                # at the same time. Since not network error so retry it
+                # without checking the max retries.
                 tqdm_std.write("%s() timeout, retry in 1 second" % coro_func.__name__)
                 await asyncio.sleep(1)
 
@@ -303,13 +321,6 @@ def retry_sftp(coro_func):
 
 
 def run_task_in_thread(loop: asyncio.BaseEventLoop, coro: asyncio.Task):
-    """
-    This function returns the asyncio Future after running the loop in a
-    thread.
-
-    This makes the return value of this function the same as the return
-    of ``loop.run_until_complete``.
-    """
     with ThreadPoolExecutor(max_workers=1) as aio_pool:
         try:
             future = aio_pool.submit(loop.run_until_complete, coro)

@@ -1,5 +1,5 @@
 from collections import UserList, namedtuple
-from .utils import FailedDownload, MultiPartDownloadError
+from .exceptions import FailedDownload, MultiPartDownloadError
 import aiohttp
 
 __all__ = ["Results"]
@@ -10,10 +10,18 @@ class Error(namedtuple("error", ("filepath_partial", "url", "exception"))):
         filepath_partial = ""
         if isinstance(self.filepath_partial, str):
             filepath_partial = f"{self.filepath_partial},\n"
-        return filepath_partial + f"{self.url},\n{str(self.exception)}"
+        return filepath_partial + f"{self.url},\n{repr(self.exception)}"
 
     def __repr__(self):
-        return str(self)
+        return self.__str__()
+
+
+class Success(namedtuple("success", ("path", "url"))):
+    def __str__(self) -> str:
+        return f"{self.path} downloaded from {self.url}\n"
+
+    def __repr__(self):
+        return f"{self.path} {self.url}\n"
 
 
 class Results(UserList):
@@ -26,10 +34,11 @@ class Results(UserList):
     property.
     """
 
-    def __init__(self, *args, errors=None, urls=None):
+    def __init__(self, *args, errors=None, urls=None, success=None):
         super().__init__(*args)
         self._errors = errors or list()
         self._urls = urls or list()
+        self._success = success or list()
 
     def _get_nice_resp_repr(self, response):
         # This is a modified version of aiohttp.ClientResponse.__repr__
@@ -46,7 +55,8 @@ class Results(UserList):
             return repr(response)
 
     def __str__(self):
-        out = super().__repr__()
+        out = "\nSuccess:\n"
+        out += self._success.__repr__()
         if self.errors:
             out += "\nErrors:\n"
             for error in self.errors:
@@ -63,6 +73,7 @@ class Results(UserList):
     def append(self, path, url):
         super().append(path)
         self._urls.append(url)
+        self._success.append(Success(path, url))
 
     def add_error(self, filename, url, exception):
         self._errors.append(Error(filename, url, exception))
@@ -78,6 +89,10 @@ class Results(UserList):
         ``exception`` is the error raised during download.
         """
         return self._errors
+
+    @property
+    def success(self):
+        return self._success
 
     @property
     def urls(self):

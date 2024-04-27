@@ -9,7 +9,9 @@ def test_setup():
 
 
 def test_modifyconfig():
-    dl = Downloader(max_conn=10, max_splits=10, config=SessionConfig(max_tries=6))
+    dl = Downloader(
+        max_conn=10, max_splits=10, session_config=SessionConfig(max_tries=6)
+    )
     assert dl.queued_downloads == 0
     assert dl.config.max_conn == 10
     assert dl.config.max_splits == 10

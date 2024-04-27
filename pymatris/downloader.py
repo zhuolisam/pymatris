@@ -3,18 +3,20 @@ from typing import Callable, Optional, TypeVar, List, Union
 import contextlib
 import asyncio
 from pymatris.config import SessionConfig, DownloaderConfig
-from pymatris.protocol_handler.http_handler import ProtocolHandler
-from .utils import FailedDownload, run_task_in_thread
+from pymatris.protocol_handler import ProtocolResolver
+from pymatris.exceptions import FailedDownload
+from .utils import run_task_in_thread
 from .results import Results
 import pathlib
 import os
 import aiohttp
-from pymatris.utils import default_name
+from pymatris.utils import default_name, replace_tempfile, remove_file
 from tqdm import tqdm as tqdm_std
 import signal
 import urllib
-import threading
-import warnings
+import pymatris
+import logging
+
 
 _T = TypeVar("_T")
 
@@ -27,7 +29,13 @@ class _QueueList(List[_T]):
         queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
         for item in self:
             queue.put_nowait(item)
+        self.clear()
         return queue
+
+    def queued_urls(self):
+        queue_urls = []
+        for item in self:
+            queue_urls.append
 
 
 class Token:
@@ -54,19 +62,18 @@ class Downloader:
         max_splits: int = 5,
         all_progress: bool = True,
         overwrite: bool = True,
-        config: Optional[SessionConfig] = None,
+        session_config: Optional[SessionConfig] = None,
     ):
         self.config = DownloaderConfig(
             max_conn=max_conn,
             max_splits=max_splits,
             all_progress=all_progress,
             overwrite=overwrite,
-            config=config,
+            config=session_config,
         )
         self.download_queue = _QueueList()  # Queue that will hold all download task
         self._configure_logging()  # Configure logging
         self.tqdm = tqdm_std  # Configure progress bar writer
-        self.protocol_handler = ProtocolHandler
 
     def enqueue_file(
         self,
@@ -96,9 +103,9 @@ class Downloader:
 
         # Restrict unsupported protocols
         scheme = urllib.parse.urlparse(url).scheme
-        if scheme not in self.protocol_handler.supported_protocols():
+        if scheme not in ProtocolResolver.supported_protocols():
             raise ValueError(
-                f"URL must start with either:  {self.protocol_handler.supported_protocols()}"
+                f"URL must start with either:  {ProtocolResolver.supported_protocols()}"
             )
 
         self.download_queue.append((url, filepath, overwrite, kwargs))
@@ -113,21 +120,20 @@ class Downloader:
             queue.put_nowait(Token(i + 1))
         return queue
 
-    def _format_results(self, dl_results, main_pb):
+    def _format_results_and_remove_tempfile(self, dl_results, main_pb):
         errors = sum([isinstance(i, FailedDownload) for i in dl_results])
         if errors:
-            total_files = self.queued_downloads
+            total_files = len(dl_results)
             message = f"{errors}/{total_files} files failed to download."
             if main_pb:
                 main_pb.write(message)
             else:
-                # pymatris.log.info(message)
-                print("Yoo", message)
-                pass
+                pymatris.log.info(message)
 
         results = Results()
         for res in dl_results:
             if isinstance(res, FailedDownload):
+                remove_file(str(res.filepath_partial) + ".matris")
                 results.add_error(res.filepath_partial, res.url, res.exception)
                 # pymatris.log.info(
                 #     "%s failed to download with exception\n" "%s",
@@ -138,12 +144,13 @@ class Downloader:
             elif isinstance(res, Exception):
                 raise res
             else:
-                requested_url, filepath = res
+                requested_url, filepath, tempfilepath = res
+                replace_tempfile(str(tempfilepath))
                 results.append(path=filepath, url=requested_url)
 
         return results
 
-    async def run_download(self):
+    async def run_download(self) -> Results:
         futures = []
         tokens = self._generate_tokens()
         total_files = self.queued_downloads
@@ -162,7 +169,7 @@ class Downloader:
                         ) = await dl_queue.get()
 
                         scheme = url.split("://")[0]
-                        handler = self.protocol_handler.get_handler(scheme)
+                        handler = ProtocolResolver.get_handler(scheme)
 
                         file_pb = self.tqdm if self.config.file_progress else False
                         token = await tokens.get()
@@ -204,7 +211,7 @@ class Downloader:
                         task.cancel()
                     results = await asyncio.gather(*futures, return_exceptions=True)
                 finally:
-                    results = self._format_results(results, main_pb)
+                    results = self._format_results_and_remove_tempfile(results, main_pb)
         return results
 
     def download(self):
@@ -252,3 +259,26 @@ class Downloader:
     def _configure_logging(self):
         if self.config.log_level is None:
             return
+
+        sh = logging.StreamHandler()
+        sh.setLevel(self.config.log_level)
+
+        formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+        sh.setFormatter(formatter)
+
+        pymatris.log.addHandler(sh)
+        pymatris.log.setLevel(self.config.log_level)
+
+        aiohttp_logger = logging.getLogger("aiohttp.client")
+        aioftp_logger = logging.getLogger("aioftp.client")
+        asyncssh_logger = logging.getLogger("asyncssh")
+
+        aioftp_logger.addHandler(sh)
+        aioftp_logger.setLevel(self.config.log_level)
+
+        aiohttp_logger.addHandler(sh)
+        aiohttp_logger.setLevel(self.config.log_level)
+
+        asyncssh_logger.addHandler(sh)
+        asyncssh_logger.setLevel(self.config.log_level)
+        pymatris.log.debug("pymatris configured to debug level logging...")

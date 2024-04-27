@@ -1,10 +1,7 @@
 import platform
-from typing import Dict, Union, Optional
+from typing import Dict, Optional
+import os
 
-try:
-    from typing import Literal  # Added in Python 3.8
-except ImportError:
-    from typing_extensions import Literal  # type: ignore
 
 from dataclasses import field, dataclass
 
@@ -87,6 +84,9 @@ class DownloaderConfig:
         # If all_progress is turned off, auto disable file progress as well
         if not self.all_progress:
             self.config.file_progress = False
+
+        if "DEBUG_LEVEL" in os.environ:
+            self.log_level = os.environ.get("DEBUG_LEVEL", None)
 
     def __getattr__(self, __name: str):
         return getattr(self.config, __name)
