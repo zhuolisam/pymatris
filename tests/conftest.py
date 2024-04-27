@@ -38,7 +38,8 @@ def sftp_server():
     ).server
     server.start()
     yield server
-    server.shutdown()
+    if server.is_alive():
+        server.shutdown()
 
 
 def validate_test_file(f, shasum):

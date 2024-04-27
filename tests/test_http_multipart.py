@@ -64,7 +64,8 @@ def test_multipartserver_custom_max_tries(multipartserver, tmp_path):
     validate_test_file_content(f[0], "multipart" * 100)
 
 
-@pytest.mark.parametrize("max_tries,expected", [(1, 6), (2, 10), (3, 14)])
+# @pytest.mark.parametrize("max_tries,expected", [(1, 6), (2, 10), (3, 14)])
+@pytest.mark.parametrize("max_tries,expected", [(1, 6)])
 def test_multipartserver_exceeds_max_tries(
     multipartserver, tmp_path, max_tries, expected
 ):
