@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pymatris"
-version = "0.0.0"
+version = "0.0.1"
 description = "Parallel download manager for HTTP/HTTPS/FTP/SFTP protocols."
 authors = ["zhuolisam <zhuolisam0627@gmail.com>"]
 readme = "README.md"
