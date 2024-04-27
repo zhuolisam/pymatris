@@ -135,12 +135,11 @@ class Downloader:
             if isinstance(res, FailedDownload):
                 remove_file(str(res.filepath_partial) + ".matris")
                 results.add_error(res.filepath_partial, res.url, res.exception)
-                # pymatris.log.info(
-                #     "%s failed to download with exception\n" "%s",
-                #     res.url,
-                #     res.exception,
-                # )
-                # self.tqdm.write("This is the error", res.url, str(res.exception))
+                pymatris.log.info(
+                    "%s failed to download with exception\n" "%s",
+                    res.url,
+                    res.exception,
+                )
             elif isinstance(res, Exception):
                 raise res
             else:
