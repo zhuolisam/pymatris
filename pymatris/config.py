@@ -30,31 +30,6 @@ def _default_aiohttp_session(config: "SessionConfig") -> aiohttp.ClientSession:
     return aiohttp.ClientSession(headers=config.headers)
 
 
-# @dataclass
-# class EnvConfig:
-#     """
-#     Configuration read from environment variables.
-#     """
-
-#     # Session scoped env vars
-#     serial_mode: bool = field(default=False, init=False)
-#     disable_range: bool = field(default=False, init=False)
-#     hide_progress: bool = field(default=False, init=False)
-#     debug_logging: bool = field(default=False, init=False)
-#     timeout_total: float = field(default=0, init=False)
-#     timeout_sock_read: float = field(default=90, init=False)
-#     override_use_aiofiles: bool = field(default=False, init=False)
-
-#     def __post_init__(self):
-#         self.serial_mode = "PARFIVE_SINGLE_DOWNLOAD" in os.environ
-#         self.disable_range = "PARFIVE_DISABLE_RANGE" in os.environ
-#         self.hide_progress = "PARFIVE_HIDE_PROGRESS" in os.environ
-#         self.debug_logging = "PARFIVE_DEBUG" in os.environ
-#         self.timeout_total = float(os.environ.get("PARFIVE_TOTAL_TIMEOUT", 0))
-#         self.timeout_sock_read = float(os.environ.get("PARFIVE_SOCK_READ_TIMEOUT", 90))
-#         self.override_use_aiofiles = "PARFIVE_OVERWRITE_ENABLE_AIOFILES" in os.environ
-
-
 @dataclass
 class SessionConfig:
     headers: Optional[Dict[str, str]] = field(default_factory=_default_headers)
@@ -62,6 +37,10 @@ class SessionConfig:
     file_progress: bool = True
     timeouts: int = 300  # Default to 5 min timeout
     max_tries: int = 5
+    log_level: Optional[str] = None
+
+    def __post_init__(self):
+        self.log_level = "debug" if "PYMATRIS_DEBUG" in os.environ else None
 
 
 @dataclass
@@ -74,7 +53,6 @@ class DownloaderConfig:
     max_splits: int = 5
     all_progress: bool = True
     overwrite: bool = True
-    log_level: Optional[str] = None
     config: Optional[SessionConfig] = field(default_factory=SessionConfig)
 
     def __post_init__(self):
@@ -84,9 +62,6 @@ class DownloaderConfig:
         # If all_progress is turned off, auto disable file progress as well
         if not self.all_progress:
             self.config.file_progress = False
-
-        if "DEBUG_LEVEL" in os.environ:
-            self.log_level = os.environ.get("DEBUG_LEVEL", None)
 
     def __getattr__(self, __name: str):
         return getattr(self.config, __name)

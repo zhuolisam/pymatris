@@ -3,12 +3,10 @@ from .base_handler import ProtocolHandler
 import urllib
 from pymatris.utils import (
     allocate_tempfile,
-    replace_tempfile,
     get_filepath,
     get_ftp_size,
     generate_range,
     retry_sftp,
-    remove_file,
     cancel_task,
 )
 from pymatris.write_worker import async_write_worker

@@ -1,11 +1,8 @@
-import tempfile
 from pymatris.utils import (
     get_filepath,
     allocate_tempfile,
-    replace_tempfile,
     get_http_size,
     cancel_task,
-    remove_file,
     retry,
     generate_range,
 )

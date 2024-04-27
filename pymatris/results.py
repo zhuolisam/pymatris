@@ -25,15 +25,6 @@ class Success(namedtuple("success", ("path", "url"))):
 
 
 class Results(UserList):
-    """
-    The results of a download from `parfive.Downloader.download`.
-
-    This object contains the filenames of successful downloads as well,
-    a list of all urls requested in the `~parfive.Results.urls` property
-    and a list of any errors encountered in the `~parfive.Results.errors`
-    property.
-    """
-
     def __init__(self, *args, errors=None, urls=None, success=None):
         super().__init__(*args)
         self._errors = errors or list()
@@ -55,8 +46,13 @@ class Results(UserList):
             return repr(response)
 
     def __str__(self):
-        out = "\nSuccess:\n"
-        out += self._success.__repr__()
+        out = ""
+
+        if self.success:
+            out = "\nSuccess:\n"
+            for suc in self.success:
+                out += f"{repr(suc)}"
+
         if self.errors:
             out += "\nErrors:\n"
             for error in self.errors:
@@ -80,14 +76,6 @@ class Results(UserList):
 
     @property
     def errors(self):
-        """
-        A list of errors encountered during the download.
-
-        The errors are represented as a tuple containing
-        ``(filepath, url, exception)`` where ``filepath`` is a function for
-        generating a filepath, ``url`` is the url to be downloaded and
-        ``exception`` is the error raised during download.
-        """
         return self._errors
 
     @property
@@ -96,8 +84,4 @@ class Results(UserList):
 
     @property
     def urls(self):
-        """
-        A list of requested urls.
-
-        """
         return self._urls

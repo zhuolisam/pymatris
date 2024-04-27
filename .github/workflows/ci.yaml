@@ -1,0 +1,67 @@
+name: test
+
+permissions: write-all
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "*"
+
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v3
+        with:
+          python-version: 3.9
+
+      - name: cache poetry install
+        uses: actions/cache@v2
+        with:
+          path: ~/.local
+          key: poetry-1.1.12-0
+
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.1.13
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+
+      - name: Cache Dependencies
+        id: cache-deps
+        uses: actions/cache@v2
+        with:
+          path: .venv
+          key: pydeps-${{ hashFiles('**/poetry.lock') }}
+
+
+      - name: Install Dependencies
+        run: poetry install --no-interaction --no-root
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+
+      - run: poetry install --no-interaction
+
+      - name: Run Tests and Build Coverage Report
+        run: poetry run pytest --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=pymatris tests/ | tee pytest-coverage.txt
+
+
+      - name: Comment coverage on PR
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: ./pytest-coverage.txt
+          junitxml-path: ./pytest.xml
+
+      - name: Check test results and mark workflow as failed if necessary
+        run: |
+          if grep -q 'FAILED' pytest-coverage.txt; then
+            echo 'Test case failed. Marking workflow as failed.'
+            exit 1
+          fi

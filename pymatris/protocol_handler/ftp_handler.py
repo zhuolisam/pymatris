@@ -2,10 +2,8 @@ from .base_handler import ProtocolHandler
 import urllib
 from pymatris.utils import (
     allocate_tempfile,
-    replace_tempfile,
     get_filepath,
     get_ftp_size,
-    remove_file,
     cancel_task,
 )
 import pymatris

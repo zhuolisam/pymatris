@@ -125,7 +125,7 @@ class Downloader:
         tokens = self._generate_tokens()
         total_files = self.queued_downloads
         dl_queue = self.download_queue.generate_queue()
-        results = []
+        results = ret_results = None
 
         with self._get_main_pb(total_files) as main_pb:
             async with self.config.aiohttp_client_session() as session:
@@ -181,8 +181,10 @@ class Downloader:
                         task.cancel()
                     results = await asyncio.gather(*futures, return_exceptions=True)
                 finally:
-                    results = self._format_results_and_remove_tempfile(results, main_pb)
-        return results
+                    ret_results = self._format_results_and_remove_tempfile(
+                        results, main_pb
+                    )
+        return ret_results
 
     def download(self):
         try:
