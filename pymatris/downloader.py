@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable, Optional, TypeVar, List, Union
+from typing import Callable, Optional, Union
 import contextlib
 import asyncio
 from pymatris.config import SessionConfig, DownloaderConfig
@@ -10,7 +10,13 @@ from .results import Results
 import pathlib
 import os
 import aiohttp
-from pymatris.utils import default_name, replace_tempfile, remove_file
+from pymatris.utils import (
+    default_name,
+    replace_tempfile,
+    remove_file,
+    _QueueList,
+    Token,
+)
 from tqdm import tqdm as tqdm_std
 import signal
 import urllib
@@ -18,44 +24,7 @@ import pymatris
 import logging
 
 
-_T = TypeVar("_T")
-
-
-class _QueueList(List[_T]):
-    def __init__(self):
-        pass
-
-    def generate_queue(self, maxsize: int = 0) -> asyncio.Queue:
-        queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
-        for item in self:
-            queue.put_nowait(item)
-        self.clear()
-        return queue
-
-    def queued_urls(self):
-        queue_urls = []
-        for item in self:
-            queue_urls.append
-
-
-class Token:
-    def __init__(self, n: int) -> None:
-        self.n = n
-
-    def __repr__(self) -> str:
-        return super().__repr__() + f"n = {self.n}"
-
-    def __str__(self) -> str:
-        return f"Token {self.n}"
-
-
 class Downloader:
-    """_summary_
-    Returns
-    ------
-    Results
-    """
-
     def __init__(
         self,
         max_conn: int = 5,
@@ -120,7 +89,9 @@ class Downloader:
             queue.put_nowait(Token(i + 1))
         return queue
 
-    def _format_results_and_remove_tempfile(self, dl_results, main_pb):
+    def _format_results_and_remove_tempfile(
+        self, dl_results: Results, main_pb: Optional[tqdm_std]
+    ):
         errors = sum([isinstance(i, FailedDownload) for i in dl_results])
         if errors:
             total_files = len(dl_results)

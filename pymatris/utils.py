@@ -4,7 +4,7 @@ import asyncio
 import aiohttp
 import aioftp
 import asyncssh
-from typing import Generator, Tuple, Dict, Union
+from typing import Generator, Tuple, Dict, Union, TypeVar, List
 from itertools import count
 import warnings
 import hashlib
@@ -13,6 +13,36 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 from .exceptions import FailedHTTPRequestError, MultiPartDownloadError
 import pymatris
+
+_T = TypeVar("_T")
+
+
+class _QueueList(List[_T]):
+    def __init__(self):
+        pass
+
+    def generate_queue(self, maxsize: int = 0) -> asyncio.Queue:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+        for item in self:
+            queue.put_nowait(item)
+        self.clear()
+        return queue
+
+    def queued_urls(self):
+        queue_urls = []
+        for item in self:
+            queue_urls.append
+
+
+class Token:
+    def __init__(self, n: int) -> None:
+        self.n = n
+
+    def __repr__(self) -> str:
+        return super().__repr__() + f"n = {self.n}"
+
+    def __str__(self) -> str:
+        return f"Token {self.n}"
 
 
 def default_name(
