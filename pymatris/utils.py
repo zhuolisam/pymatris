@@ -250,7 +250,7 @@ def sha256sum(filename: str) -> str:
     return h.hexdigest()
 
 
-def retry(coro_func):
+def retry_http(coro_func):
     async def wrapper(self, *args, **kwargs):
         max_tries = kwargs.pop(
             "max_tries"
@@ -261,6 +261,13 @@ def retry(coro_func):
             tried += 1
             try:
                 return await coro_func(self, *args, **kwargs)
+            except asyncio.TimeoutError:
+                # From https://github.com/cshuaimin/aiodl
+                # Usually server has a fixed TCP timeout to clean dead
+                # connections, might have a lot of timeouts appear
+                # So retry it without checking the max retries.
+                tqdm_std.write("%s() timeout, retry in 1 second" % coro_func.__name__)
+                await asyncio.sleep(1)
             except (
                 MultiPartDownloadError,
                 FailedHTTPRequestError,
@@ -270,8 +277,7 @@ def retry(coro_func):
                 if tried < max_tries:
                     # Exponential backoff
                     sec = tried / 2
-                    message = "%s(%s) failed: retry in %.1f seconds (%d/%d)" % (
-                        coro_func.__name__,
+                    message = "(%s) failed: retry in %.1f seconds (%d/%d)" % (
                         cur_url,
                         sec,
                         tried,
@@ -281,8 +287,7 @@ def retry(coro_func):
                     pymatris.log.debug(message)
                     await asyncio.sleep(sec)
                 else:
-                    message = "%s(%s) failed after %d tries: " % (
-                        coro_func.__name__,
+                    message = "(%s) failed after %d tries: " % (
                         cur_url,
                         max_tries,
                     )
@@ -294,18 +299,11 @@ def retry(coro_func):
                         exec.retry = tried
                         exec.max_retries = max_tries
                     raise exc
-            except asyncio.TimeoutError:
-                # Usually server has a fixed TCP timeout to clean dead
-                # connections, so you can see a lot of timeouts appear
-                # at the same time. I don't think this is an error,
-                # So retry it without checking the max retries.
-                tqdm_std.write("%s() timeout, retry in 1 second" % coro_func.__name__)
-                await asyncio.sleep(1)
 
     return wrapper
 
 
-def retry_sftp(coro_func):
+def retry_ftp(coro_func):
     async def wrapper(self, *args, **kwargs):
         max_tries = kwargs.pop(
             "max_tries"
@@ -316,12 +314,19 @@ def retry_sftp(coro_func):
             tried += 1
             try:
                 return await coro_func(self, *args, **kwargs)
-            except (asyncssh.SFTPError, socket.gaierror) as exc:
+            except asyncio.TimeoutError:
+                tqdm_std.write("%s() timeout, retry in 1 second" % coro_func.__name__)
+                await asyncio.sleep(1)
+            except (
+                asyncssh.SFTPError,
+                aioftp.AIOFTPException,
+                socket.gaierror,
+                Exception,
+            ) as exc:
                 if tried < max_tries:
                     # Exponential backoff
                     sec = tried / 2
-                    message = "%s(%s) failed: retry in %.1f seconds (%d/%d)" % (
-                        coro_func.__name__,
+                    message = "(%s) failed: retry in %.1f seconds (%d/%d)" % (
                         cur_url,
                         sec,
                         tried,
@@ -331,21 +336,13 @@ def retry_sftp(coro_func):
                     pymatris.log.debug(message)
                     await asyncio.sleep(sec)
                 else:
-                    message = "%s(%s) failed after %d tries: " % (
-                        coro_func.__name__,
+                    message = "(%s) failed after %d tries: " % (
                         cur_url,
                         max_tries,
                     )
                     tqdm_std.write(message)
                     pymatris.log.debug(message)
                     raise exc
-            except asyncio.TimeoutError:
-                # Usually server has a fixed TCP timeout to clean dead
-                # connections, so you can see a lot of timeouts appear
-                # at the same time. Since not network error so retry it
-                # without checking the max retries.
-                tqdm_std.write("%s() timeout, retry in 1 second" % coro_func.__name__)
-                await asyncio.sleep(1)
 
     return wrapper
 

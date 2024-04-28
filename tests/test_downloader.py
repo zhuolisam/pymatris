@@ -3,7 +3,7 @@ from pymatris import Downloader
 
 
 def throwerror(*args, **kwargs):
-    raise ValueError("Out of Cheese.")
+    raise ValueError("Throwing Errors.")
 
 
 @patch("pymatris.downloader.default_name", throwerror)

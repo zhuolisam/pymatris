@@ -22,19 +22,21 @@ import signal
 import urllib
 import pymatris
 import logging
+import threading
+import warnings
 
 
 class Downloader:
     def __init__(
         self,
-        max_conn: int = 5,
+        max_parallel: int = 5,
         max_splits: int = 5,
         all_progress: bool = True,
         overwrite: bool = True,
         session_config: Optional[SessionConfig] = None,
     ):
         self.config = DownloaderConfig(
-            max_conn=max_conn,
+            max_parallel=max_parallel,
             max_splits=max_splits,
             all_progress=all_progress,
             overwrite=overwrite,
@@ -84,8 +86,8 @@ class Downloader:
         return len(self.download_queue)
 
     def _generate_tokens(self):
-        queue = asyncio.Queue(maxsize=self.config.max_conn)
-        for i in range(self.config.max_conn):
+        queue = asyncio.Queue(maxsize=self.config.max_parallel)
+        for i in range(self.config.max_parallel):
             queue.put_nowait(Token(i + 1))
         return queue
 
@@ -209,6 +211,15 @@ class Downloader:
 
     @staticmethod
     def _add_signal_handler(loop, task):
+        if os.name == "nt":
+            return
+
+        if threading.current_thread() != threading.main_thread():
+            warnings.warn(
+                "Pymatris running in different thread, unable to cancel the download",
+                UserWarning,
+            )
+            return
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, task.cancel)
 

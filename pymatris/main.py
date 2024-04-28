@@ -15,7 +15,7 @@ def parse_args(args):
         help="URLs of files to be downloaded.",
     )
     parser.add_argument(
-        "--max-conn",
+        "--max-parallel",
         type=int,
         default=5,
         help="Maximum number of parallel file downloads.",
@@ -36,7 +36,7 @@ def parse_args(args):
         "--overwrite",
         action="store_const",
         const=True,
-        default=True,
+        default=False,
         help="Overwrite if the file exists. Only one matched file will be overwritten",
     )
     parser.add_argument(
@@ -56,17 +56,9 @@ def parse_args(args):
         help="Show progress bar for each file.",
     )
     parser.add_argument(
-        "--print-filenames",
-        action="store_const",
-        const=True,
-        default=True,
-        dest="print_filenames",
-        help="Print successfully downloaded files's names to stdout.",
-    )
-    parser.add_argument(
         "--show-errors",
         action="store_const",
-        const=False,
+        const=True,
         default=False,
         dest="show_errors",
         help="Show failed downloads with its errors to stderr.",
@@ -79,6 +71,12 @@ def parse_args(args):
         help="Log debugging output while transferring the files.",
     )
     args = parser.parse_args(args)
+
+    # If no arguments are provided, print the help menu
+    if not args:
+        parser.print_help()
+        exit()
+
     return args
 
 
@@ -90,19 +88,19 @@ def run_pymatris(args):
     )
 
     downloader = Downloader(
-        max_conn=args.max_conn,
+        max_parallel=args.max_parallel,
         max_splits=args.max_splits,
         all_progress=not args.no_progress,
         overwrite=args.overwrite,
         session_config=config,
     )
+
     for url in args.urls:
         downloader.enqueue_file(url, path=args.directory)
     results = downloader.download()
 
-    if args.print_filenames:
-        for i in results:
-            print(i + " downloaded")
+    for i in results:
+        print(i + " downloaded")
 
     if args.show_errors:
         err_str = ""

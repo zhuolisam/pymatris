@@ -19,14 +19,6 @@ def _default_headers():
 
 
 def _default_aiohttp_session(config: "SessionConfig") -> aiohttp.ClientSession:
-    """
-    The aiohttp session with the kwargs stored by this config.
-
-    Notes
-    -----
-    `aiohttp.ClientSession` expects to be instantiated in a asyncio context
-    where it can get a running loop.
-    """
     return aiohttp.ClientSession(headers=config.headers)
 
 
@@ -49,7 +41,7 @@ class DownloaderConfig:
     Hold all downloader session state.
     """
 
-    max_conn: int = 5
+    max_parallel: int = 5
     max_splits: int = 5
     all_progress: bool = True
     overwrite: bool = True
