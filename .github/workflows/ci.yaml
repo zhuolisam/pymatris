@@ -1,4 +1,4 @@
-name: test
+name: Pytest Coverage Comment
 
 permissions: write-all
 
@@ -50,6 +50,14 @@ jobs:
       - name: Run Tests and Build Coverage Report
         run: |
           timeout 1m poetry run pytest --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=pymatris tests/ | tee pytest-coverage.txt
+          
+          sleep 1m
+
+          # Check if the test process is still running
+          if pgrep -f 'pytest' >/dev/null; then
+            # If the test process is still running, force quit it
+            pkill -f 'pytest'
+          fi
 
       - name: Comment coverage on PR
         uses: MishaKav/pytest-coverage-comment@main
