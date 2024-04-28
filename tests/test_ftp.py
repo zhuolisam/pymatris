@@ -1,34 +1,24 @@
-# from pathlib import Path
-# import os
 # from pymatris import Downloader
 
-# from .conftest import compare_two_files
+# from .conftest import validate_test_file_content
 
 
-# THIS_DIR = Path(__file__).parent
+# def test_ftp_server(ftp_server, tmp_path):
+#     pathlists = list(ftp_server.get_file_contents("testfile.txt", style="url"))
 
-# test_file_dir = THIS_DIR / "static/ftp_testfile.txt"
+#     ftpfile = pathlists[0]
 
-
-# def test_ftp_download(ftpserver, tmp_path):
-#     ftp_url = ftpserver.put_files(
-#         {"src": str(test_file_dir), "dest": "ftp_testfile.txt"},
-#         style="url",
-#         anon=False,
-#         overwrite=True,
-#     )
 #     dm = Downloader()
-#     dm.enqueue_file(ftp_url[0], path=tmp_path)
+#     dm.enqueue_file(ftpfile["path"], path=tmp_path)
 #     f = dm.download()
 
-#     ftp_filepath = os.path.join(ftpserver.server_home, "ftp_testfile.txt")
 #     assert len([*tmp_path.iterdir()]) == 1
-#     compare_two_files(ftp_filepath, f[0])
+#     validate_test_file_content(f[0], ftpfile["content"])
 
 
-# def test_sftp_nosuchfile(ftpserver, tmp_path):
+# def test_ftp_nosuchfile(ftp_server, tmp_path):
 #     # ftp://fakeusername:qweqwe@localhost:8888
-#     ftp_host = ftpserver.get_login_data(style="url", anon=False)
+#     ftp_host = ftp_server.get_login_data(style="url", anon=False)
 
 #     dm = Downloader()
 #     dm.enqueue_file(f"{ftp_host}/nonexistentfile.txt", path=tmp_path)

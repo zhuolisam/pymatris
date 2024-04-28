@@ -3,19 +3,9 @@ from .conftest import validate_test_file_content
 from pathlib import Path
 
 
-def test_sftp(sftpserver, tmp_path):
+def test_sftp_download(sftp_server, tmp_path):
     dm = Downloader()
-    sftp_url = f"{sftpserver.url}/a_dir/testfile.txt"
-    dm.enqueue_file(sftp_url, path=tmp_path)
-
-    with sftpserver.serve_content({"a_dir": {"testfile.txt": "Hello World!"}}):
-        f = dm.download()
-        assert len(f) == 1
-
-
-def test_sftp_server(sftp_server, tmp_path):
-    dm = Downloader()
-    dm.enqueue_file(f"{sftp_server.url}/test_folder/testfile.txt", path=tmp_path)
+    dm.enqueue_file(f"{sftp_server.url}/testfile.txt", path=tmp_path)
 
     f = dm.download()
     assert len(f.urls) == 1

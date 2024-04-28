@@ -22,11 +22,12 @@ def test_http_download(httpserver, tmp_path):
 
 @pytest.mark.parametrize("max_tries,expected", [(1, 1), (2, 2), (3, 3)])
 def test_http_download_fails(singlepartserverfail, tmp_path, max_tries, expected):
-    dm = Downloader()
+    dm = Downloader(
+        max_tries=max_tries,
+    )
     dm.enqueue_file(
         singlepartserverfail.url,
         path=tmp_path,
-        max_tries=max_tries,
     )
 
     assert dm.queued_downloads == 1

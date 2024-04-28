@@ -15,19 +15,35 @@ def parse_args(args):
         help="URLs of files to be downloaded.",
     )
     parser.add_argument(
-        "--max-conn",
+        "--max-parallel",
         type=int,
         default=5,
+        dest="max_parallel",
         help="Maximum number of parallel file downloads.",
     )
     parser.add_argument(
         "--max-splits",
         type=int,
         default=5,
-        help="Maximum number of parallel connections per file (only used if supported by the server).",
+        dest="max_splits",
+        help="Maximum number of parallel connections per file (only if protocol and server is supported).",
     )
     parser.add_argument(
-        "--directory",
+        "--max-tries",
+        type=int,
+        default=5,
+        dest="max_tries",
+        help="Maximum number of download attempt per url.",
+    )
+    parser.add_argument(
+        "--timeouts",
+        type=int,
+        default=300,
+        dest="timeouts",
+        help="Maximum timeouts per url.",
+    )
+    parser.add_argument(
+        "--dir",
         type=str,
         default="./",
         help="Directory to which downloaded files are saved.",
@@ -36,37 +52,21 @@ def parse_args(args):
         "--overwrite",
         action="store_const",
         const=True,
-        default=True,
-        help="Overwrite if the file exists. Only one matched file will be overwritten",
+        default=False,
+        help="Overwrite if file exists. Only one url with the clashing name will overwrite the file.",
     )
     parser.add_argument(
-        "--no-progress",
+        "--quiet",
         action="store_const",
         const=True,
         default=False,
-        dest="no_progress",
-        help="Show progress indicators during download.",
-    )
-    parser.add_argument(
-        "--no-file-progress",
-        action="store_const",
-        const=True,
-        default=False,
-        dest="no_file_progress",
-        help="Show progress bar for each file.",
-    )
-    parser.add_argument(
-        "--print-filenames",
-        action="store_const",
-        const=True,
-        default=True,
-        dest="print_filenames",
-        help="Print successfully downloaded files's names to stdout.",
+        dest="quite",
+        help="Show progress indicators and file retries if any during download.",
     )
     parser.add_argument(
         "--show-errors",
         action="store_const",
-        const=False,
+        const=True,
         default=False,
         dest="show_errors",
         help="Show failed downloads with its errors to stderr.",
@@ -79,30 +79,38 @@ def parse_args(args):
         help="Log debugging output while transferring the files.",
     )
     args = parser.parse_args(args)
+
+    # If no arguments are provided, print the help menu
+    if not args:
+        parser.print_help()
+        exit()
+
     return args
 
 
 def run_pymatris(args):
     log_level = "DEBUG" if args.verbose else None
     config = SessionConfig(
-        file_progress=not args.no_file_progress,
+        max_tries=args.max_tries,
+        timeouts=args.timeouts,
+        file_progress=not args.quiet,
         log_level=log_level,
     )
 
     downloader = Downloader(
-        max_conn=args.max_conn,
+        max_parallel=args.max_parallel,
         max_splits=args.max_splits,
-        all_progress=not args.no_progress,
+        all_progress=not args.quiet,
         overwrite=args.overwrite,
         session_config=config,
     )
+
     for url in args.urls:
-        downloader.enqueue_file(url, path=args.directory)
+        downloader.enqueue_file(url, path=args.dir)
     results = downloader.download()
 
-    if args.print_filenames:
-        for i in results:
-            print(i + " downloaded")
+    for i in results:
+        print(i + " downloaded")
 
     if args.show_errors:
         err_str = ""

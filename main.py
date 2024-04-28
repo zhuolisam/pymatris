@@ -1,19 +1,48 @@
-# from pymatris.downloader import Downloader
+from pymatris import Downloader
+
+urls = [
+    "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.parquet",
+    "ftp://bob:bob@192.168.1.6:20/tesfile.txt",
+    "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.parquet",
+]
 
 
-# def main():
-#     dm = Downloader(max_conn=5, max_splits=5)
-#     dm.enqueue_file("https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.csv")
-#     # dm.enqueue_file(
-#     #     "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.parquet"
-#     # )
-#     # dm.enqueue_file("https://yooo.com/file.parquet", max_tries=1)
-#     # dm.enqueue_file("ftp://ftp.swpc.noaa.gov/pub/warehouse/2011/2013_SRS.tar.gz")
+def main():
+    dm = Downloader()
 
-#     results = dm.download()
+    for url in urls:
+        dm.enqueue_file(url, path="./")
 
-#     # print(results)
+    results = dm.download()
+    print(results)
 
 
-# if __name__ == "__main__":
-#     main()
+def advanced():
+    # Provide custom configuration
+    dl = Downloader(
+        max_parallel=10,
+        max_splits=10,
+        max_tries=11,
+        overwrite=True,
+        all_progress=False,
+    )
+
+    for url in urls:
+        # Enqueue file to download
+        dl.enqueue_file(
+            url,
+            path="./",
+            # You can also provide custom header for HTTP requests
+            headers={"User-Agent": "Custom User Agent"},
+            # As well as modular override for max_splits, max_tries, overwrite
+            max_splits=100,
+            max_tries=100,
+            overwrite=False,
+        )
+
+    result = dl.download()
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

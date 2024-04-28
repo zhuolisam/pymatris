@@ -4,6 +4,10 @@ import pytest
 from pathlib import Path
 from pymatris.utils import sha256sum
 
+THIS_DIR = Path(__file__).parent
+
+ftp_testfile = THIS_DIR / "static/ftp_testfile.txt"
+
 
 @pytest.fixture(scope="function")
 def singlepartserver(httpserver):
@@ -33,13 +37,23 @@ def multipartserver():
 
 @pytest.fixture(scope="function")
 def sftp_server():
-    server = SimpleSFTPServer(
-        contents={"test_folder": {"testfile.txt": "Hello World From SFTP"}}
-    ).server
+    server = SimpleSFTPServer(contents={"testfile.txt": "Hello World From SFTP"}).server
     server.start()
     yield server
     if server.is_alive():
         server.shutdown()
+
+
+# @pytest.fixture(scope="function")
+# def ftp_server(ftpserver):
+#     ftpserver.put_files(
+#         {"src": str(ftp_testfile), "dest": "testfile.txt"},
+#         style="url",
+#         anon=False,
+#         overwrite=True,
+#     )
+
+#     return ftpserver
 
 
 def validate_test_file(f, shasum):

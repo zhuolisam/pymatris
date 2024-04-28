@@ -3,7 +3,7 @@ from pymatris.utils import (
     allocate_tempfile,
     get_http_size,
     cancel_task,
-    retry,
+    retry_http,
     generate_range,
 )
 from pymatris.exceptions import (
@@ -106,6 +106,9 @@ class HTTPHandler(ProtocolHandler):
 
             await asyncio.gather(*tasks)
             await downloaded_chunk_queue.join()
+
+            # Cleanup
+            writer.cancel()
             return url, str(filepath), str(tmpfilepath)
 
         except (Exception, asyncio.CancelledError) as e:
@@ -114,19 +117,14 @@ class HTTPHandler(ProtocolHandler):
             if writer is not None:
                 await cancel_task(writer)
                 writer = None
-
-            # if tmpfilepath is not None:
-            #     remove_file(str(tmpfilepath))
-
             raise FailedDownload(filepath or filepath_partial, url, e) from e
         finally:
             # Cancel idle writer
             if writer is not None:
                 writer.cancel()
-            # replace_tempfile(str(tmpfilepath))
             pb_callback(file_pb)
 
-    @retry
+    @retry_http
     async def _get_download_info(self, config, session, url, **kwargs):
         additional_headers = kwargs.pop("headers", {})
         headers = {**config.headers, **additional_headers}
@@ -156,7 +154,7 @@ class HTTPHandler(ProtocolHandler):
             redirectUrl = resp.headers.get("Location", url)
             return resp, redirectUrl
 
-    @retry
+    @retry_http
     async def _download_worker(
         self, config, session, url, chunksize, http_range, queue, **kwargs
     ):
