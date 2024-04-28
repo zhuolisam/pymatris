@@ -6,51 +6,34 @@
 Parallel file downloader for HTTP/HTTPS, FTP and SFTP protocols, built using Python.
 
 
-## Installation
+### Installation
 
 ```
 pip install pymatris
 ```
 
-#  Usage
+##  Usage
 
-* Initialize Downloader
+Initialize Downloader
 ```python
 from pymatris import Downloader
 
 dl = Downloader()
 ```
-* Enqueue file to download
+Enqueue file to download
 ```python
 
 dl.enqueue_file("https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.parquet", path="./")
 
 ```
 
-* Start downloading files
+Start downloading files and view results
 ```python
 
-dl.download()
+results = dl.download()
+print(results)
 
 ```
-
-* View results
-```python
-result = dl.download()
-```
-
-
-
-Under the hood, `pymatris.Downloader` uses a global queue to manage the download tasks. `pymatris.Downloader.enqueue_file()` will add url to download queue, and `pymatris.Downloder.download()` will download the files in parallel. Pymatris uses asyncio to download files in parallel, with asychronous I/O operations using aiofiles, hence enabling faster downloads.
-
-
-#### Results and Error Handling
-`pymatris.Downloader.download()` returns a `Results` object, which is a list of the filenames that have been downloaded. `Results` object has two attributes, `success` and `errors`. 
-
-`success` is a list of named tuples, where each named tuple contains `.path` the filepath and `.url` the url. 
-
-`errors` is a list of named tuples, where each named tuple contains `.filepath_partial` the intended filepath, `.url` the url, `.exception` an Exception or aiohttp.ClientResponse that occurred during download.
-
 
 ### Example Usage
 
@@ -60,11 +43,13 @@ from [main.py](https://github.com/zhuolisam/pymatris/blob/main/main.py)
 from pymatris import Downloader
 urls = [
     "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.parquet",
-    "ftp://bob:bob@192.168.1.6:20/tesfile.txt",
-    "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.parquet",
+    "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-02.parquet",
+    "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-03.parquet",
+    "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-04.parquet",
+    "https://storage.data.gov.my/pricecatcher/pricecatcher_2022-05.parquet",
+    "sftp://belle:belle@192.168.1.6/home/belle/files/testfile.txt",
+    "ftp://bob:bob@192.168.1.6:20/nonexistent.txt",
 ]
-
-
 
 dm = Downloader()
 
@@ -76,8 +61,12 @@ results = dm.download()
 
 print(results)
 >> Success:
->> pricecatcher_2022-01.csv https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.csv
 >> pricecatcher_2022-01.parquet https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.parquet
+>> pricecatcher_2022-02.parquet https://storage.data.gov.my/pricecatcher/pricecatcher_2022-02.parquet
+>> pricecatcher_2022-03.parquet https://storage.data.gov.my/pricecatcher/pricecatcher_2022-03.parquet
+>> pricecatcher_2022-04.parquet https://storage.data.gov.my/pricecatcher/pricecatcher_2022-04.parquet
+>> pricecatcher_2022-05.parquet https://storage.data.gov.my/pricecatcher/pricecatcher_2022-05.parquet
+>> testfile.txt sftp://belle:belle@192.168.1.6/home/belle/files/testfile.txt
 
 >> Errors:
 >> (ftp://bob:bob@192.168.1.6:20/tesfile.txt,
@@ -89,7 +78,28 @@ print(results)
 Visit [main.py](https://github.com/zhuolisam/pymatris/blob/main/main.py) for advanced usage.
 
 
-### CLI
+## Program Architecture
+![Architecture.png](static/architecture.png)
+
+Under the hood, `pymatris.Downloader` uses a global queue to manage the download tasks. `pymatris.Downloader.enqueue_file()` will add url to download queue, and `pymatris.Downloder.download()` will download the files in parallel. 
+
+
+`pymatris.Downloader` depends on [`ProtocolResolver`]((https://github.com/zhuolisam/pymatris/blob/main/pymatris/protocol_handler/__init__.py)) to resolve the url scheme and route to the correct protocol handler. 
+
+Pymatris uses asyncio-based clients (`aiohttp`, `aioftp`, `asyncssh`) to download files in parallel, with asychronous I/O operations using `aiofiles`.
+
+
+#### Results and Error Handling
+`pymatris.Downloader.download()` returns a `Results` object, which is a list of the filenames that have been downloaded. `Results` object has two attributes, `success` and `errors`. 
+
+`success` is a list of named tuples, where each named tuple contains `.path` the filepath and `.url` the url. 
+
+`errors` is a list of named tuples, where each named tuple contains `.filepath_partial` the intended filepath, `.url` the url, `.exception` an Exception or aiohttp.ClientResponse that occurred during download.
+
+
+
+
+## CLI
 Pymatris also provides a command line interface to download files in parallel.
 In your terminal, run the following command to download files in parallel.
 ```bash
@@ -101,11 +111,29 @@ pymatris https://storage.data.gov.my/pricecatcher/pricecatcher_2022-01.parquet h
 ```
 
 ```bash
-  $ pymatris --help
-  usage: pymatris [-h] [--max-parallel MAX_PARALLEL] [--max-splits MAX_SPLITS]
-                [--overwrite] [--quiet] [--dir DIR] [--show-errors SHOW_ERRORS]
-                [--timeouts TIMEOUTS] [--max-tries MAX_TRIES]
-                URLS [URLS ...]
+usage: pymatris [-h] [--max-parallel MAX_PARALLEL] [--max-splits MAX_SPLITS] 
+                [--max-tries MAX_TRIES] [--timeouts TIMEOUTS] [--dir DIR] 
+                [--overwrite] [--quiet] [--show-errors] [--verbose] URLS [URLS ...]
+
+pymatris: Parallel download manager for HTTP/HTTPS/FTP/SFTP protocols.
+
+positional arguments:
+  URLS                  URLs of files to be downloaded.
+
+options:
+  -h, --help            show this help message and exit
+  --max-parallel MAX_PARALLEL
+                        Maximum number of parallel file downloads.
+  --max-splits MAX_SPLITS
+                        Maximum number of parallel connections per file (only if protocol and server is supported).
+  --max-tries MAX_TRIES
+                        Maximum number of download attempt per url.
+  --timeouts TIMEOUTS   Maximum timeouts per url.
+  --dir DIR             Directory to which downloaded files are saved.
+  --overwrite           Overwrite if file exists. Only one url with the clashing name will overwrite the file.
+  --quiet               Show progress indicators and file retries if any during download.
+  --show-errors         Show failed downloads with its errors to stderr.
+  --verbose             Log debugging output while transferring the files.
 
 ```
 
@@ -155,10 +183,8 @@ pymatris --max-tries 10 <urls>
 pymatris --quiet <urls>
 ```
 
-
-
 ### Requirements
-* Python 3.9 or above
+* python 3.9 or above
 * aiohttp
 * aioftp
 * asyncssh
@@ -167,8 +193,10 @@ pymatris --quiet <urls>
 
 
 ### TODO
-- [ ] Add better concurrency support for FTP protocol.
-- [ ] Better error handling and logging for FTP and SFTP protocols.
+- [ ] Add support for public key authentication for FTP and SFTP protocol handler.
+- [ ] Resolve .
+- [ ] Add better concurrency support for FTP protocol, as `aioftp` by default allow only one data connection per client session.
+- [ ] Better error handling and logging.
 
 
 ### Acknowledgements 
