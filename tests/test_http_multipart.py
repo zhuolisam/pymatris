@@ -51,8 +51,8 @@ def test_multipartserver_custom_max_tries(multipartserver, tmp_path):
         fail_between_handler, 3, 7
     )  # server will fail from 3rd to 7th request
     max_tries = 6
-    dm = Downloader()
-    dm.enqueue_file(multipartserver.url, path=tmp_path, max_tries=max_tries)
+    dm = Downloader(max_tries=max_tries)
+    dm.enqueue_file(multipartserver.url, path=tmp_path)
     f = dm.download()
 
     assert len(f.urls) == 1
@@ -64,8 +64,7 @@ def test_multipartserver_custom_max_tries(multipartserver, tmp_path):
     validate_test_file_content(f[0], "multipart" * 100)
 
 
-# @pytest.mark.parametrize("max_tries,expected", [(1, 6), (2, 10), (3, 14)])
-@pytest.mark.parametrize("max_tries,expected", [(1, 6)])
+@pytest.mark.parametrize("max_tries,expected", [(1, 6), (2, 10), (3, 14)])
 def test_multipartserver_exceeds_max_tries(
     multipartserver, tmp_path, max_tries, expected
 ):
@@ -74,7 +73,6 @@ def test_multipartserver_exceeds_max_tries(
     )  # server will fail from 3rd request
 
     dm = Downloader(max_tries=max_tries)
-    max_tries = max_tries
     dm.enqueue_file(multipartserver.url, path=tmp_path)
     f = dm.download()
 
