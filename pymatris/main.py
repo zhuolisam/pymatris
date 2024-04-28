@@ -60,7 +60,7 @@ def parse_args(args):
         action="store_const",
         const=True,
         default=False,
-        dest="quite",
+        dest="quiet",
         help="Show progress indicators and file retries if any during download.",
     )
     parser.add_argument(
