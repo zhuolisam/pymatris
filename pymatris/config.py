@@ -28,11 +28,17 @@ class SessionConfig:
     chunksize: float = 1024
     file_progress: bool = True
     timeouts: int = 300  # Default to 5 min timeout
-    max_tries: int = 5
     log_level: Optional[str] = None
 
     def __post_init__(self):
-        self.log_level = "debug" if "PYMATRIS_DEBUG" in os.environ else None
+        if self.log_level is None:
+            self.log_level = "debug" if "PYMATRIS_DEBUG" in os.environ else None
+
+        # Default minimum values
+        if self.chunksize < 1:
+            self.chunksize = 1
+        if self.timeouts < 1:
+            self.timeouts = 1
 
 
 @dataclass
@@ -43,6 +49,7 @@ class DownloaderConfig:
 
     max_parallel: int = 5
     max_splits: int = 5
+    max_tries: int = 5
     all_progress: bool = True
     overwrite: bool = True
     config: Optional[SessionConfig] = field(default_factory=SessionConfig)
@@ -54,6 +61,14 @@ class DownloaderConfig:
         # If all_progress is turned off, auto disable file progress as well
         if not self.all_progress:
             self.config.file_progress = False
+
+        # Default minimum values
+        if self.max_parallel < 1:
+            self.max_parallel = 1
+        if self.max_splits < 1:
+            self.max_splits = 1
+        if self.max_tries < 1:
+            self.max_tries = 1
 
     def __getattr__(self, __name: str):
         return getattr(self.config, __name)

@@ -40,6 +40,7 @@ class SFTPHandler(ProtocolHandler):
         # Prepare for retry handler
         kwargs["max_tries"] = max_tries or config.max_tries
         kwargs["url"] = url
+        kwargs["config"] = config
 
         # Prepare files
         filepath = get_filepath(filepath_partial(None, url), overwrite)

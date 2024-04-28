@@ -255,6 +255,7 @@ def retry_http(coro_func):
         max_tries = kwargs.pop(
             "max_tries"
         )  # Have to use this workaround to get the max_tries without using parameterized decorator
+        config = args[0]
         cur_url = args[2]  # Get URL
         tried = 0
         while True:
@@ -266,7 +267,10 @@ def retry_http(coro_func):
                 # Usually server has a fixed TCP timeout to clean dead
                 # connections, might have a lot of timeouts appear
                 # So retry it without checking the max retries.
-                tqdm_std.write("%s() timeout, retry in 1 second" % coro_func.__name__)
+                message = "%s() timeout, retry in 1 second" % coro_func.__name__
+                # if config.file_progress:
+                #     tqdm_std.write(message)
+                pymatris.log.debug(message)
                 await asyncio.sleep(1)
             except (
                 MultiPartDownloadError,
@@ -283,7 +287,8 @@ def retry_http(coro_func):
                         tried,
                         max_tries,
                     )
-                    tqdm_std.write(message)
+                    # if config.file_progress:
+                    #     tqdm_std.write(message)
                     pymatris.log.debug(message)
                     await asyncio.sleep(sec)
                 else:
@@ -291,7 +296,8 @@ def retry_http(coro_func):
                         cur_url,
                         max_tries,
                     )
-                    tqdm_std.write(message)
+                    # if config.file_progress:
+                    #     tqdm_std.write(message)
                     pymatris.log.debug(message)
                     if isinstance(
                         exec, (MultiPartDownloadError, FailedHTTPRequestError)
@@ -309,14 +315,17 @@ def retry_ftp(coro_func):
             "max_tries"
         )  # Have to use this workaround to get the max_tries without using parameterized decorator
         cur_url = kwargs.pop("url")  # Get URL
+        config = kwargs.pop("config")
         tried = 0
         while True:
             tried += 1
             try:
                 return await coro_func(self, *args, **kwargs)
             except asyncio.TimeoutError:
-                tqdm_std.write("%s() timeout, retry in 1 second" % coro_func.__name__)
-                await asyncio.sleep(1)
+                message = "%s() timeout, retry in 1 second" % coro_func.__name__
+                # if config.file_progress:
+                #     tqdm_std.write(message)
+                pymatris.log.debug(message)
             except (
                 asyncssh.SFTPError,
                 aioftp.AIOFTPException,
@@ -332,7 +341,8 @@ def retry_ftp(coro_func):
                         tried,
                         max_tries,
                     )
-                    tqdm_std.write(message)
+                    # if config.file_progress:
+                    #     tqdm_std.write(message)
                     pymatris.log.debug(message)
                     await asyncio.sleep(sec)
                 else:
@@ -340,7 +350,8 @@ def retry_ftp(coro_func):
                         cur_url,
                         max_tries,
                     )
-                    tqdm_std.write(message)
+                    # if config.file_progress:
+                    #     tqdm_std.write(message)
                     pymatris.log.debug(message)
                     raise exc
 
