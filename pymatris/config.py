@@ -32,7 +32,7 @@ class SessionConfig:
 
     def __post_init__(self):
         if self.log_level is None:
-            self.log_level = "debug" if "PYMATRIS_DEBUG" in os.environ else None
+            self.log_level = "DEBUG" if "PYMATRIS_DEBUG" in os.environ else None
 
         # Default minimum values
         if self.chunksize < 1:

@@ -91,7 +91,6 @@ def parse_args(args):
 def run_pymatris(args):
     log_level = "DEBUG" if args.verbose else None
     config = SessionConfig(
-        max_tries=args.max_tries,
         timeouts=args.timeouts,
         file_progress=not args.quiet,
         log_level=log_level,
@@ -100,6 +99,7 @@ def run_pymatris(args):
     downloader = Downloader(
         max_parallel=args.max_parallel,
         max_splits=args.max_splits,
+        max_tries=args.max_tries,
         all_progress=not args.quiet,
         overwrite=args.overwrite,
         session_config=config,

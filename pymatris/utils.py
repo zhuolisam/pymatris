@@ -341,8 +341,8 @@ def retry_ftp(coro_func):
                         tried,
                         max_tries,
                     )
-                    # if config.file_progress:
-                    #     tqdm_std.write(message)
+                    if config.file_progress:
+                        tqdm_std.write(message)
                     pymatris.log.debug(message)
                     await asyncio.sleep(sec)
                 else:
@@ -350,8 +350,8 @@ def retry_ftp(coro_func):
                         cur_url,
                         max_tries,
                     )
-                    # if config.file_progress:
-                    #     tqdm_std.write(message)
+                    if config.file_progress:
+                        tqdm_std.write(message)
                     pymatris.log.debug(message)
                     raise exc
 
