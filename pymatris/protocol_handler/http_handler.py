@@ -135,7 +135,6 @@ class HTTPHandler(ProtocolHandler):
             timeout=config.timeouts,
             headers=headers,
             allow_redirects=True,
-            **kwargs,
         ) as resp:
             pymatris.log.debug(
                 "%s request made to %s with headers=%s",

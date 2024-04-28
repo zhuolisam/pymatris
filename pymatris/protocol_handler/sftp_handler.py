@@ -128,7 +128,6 @@ class SFTPHandler(ProtocolHandler):
             password=parse.password,
             port=parse.port or 22,
             known_hosts=None,
-            # **kwargs,
         )
         pymatris.log.debug("Connected to sftp server %s", parse.hostname)
 
