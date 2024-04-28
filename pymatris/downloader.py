@@ -31,6 +31,7 @@ class Downloader:
         self,
         max_parallel: int = 5,
         max_splits: int = 5,
+        max_tries: int = 5,
         all_progress: bool = True,
         overwrite: bool = True,
         session_config: Optional[SessionConfig] = None,
@@ -38,6 +39,7 @@ class Downloader:
         self.config = DownloaderConfig(
             max_parallel=max_parallel,
             max_splits=max_splits,
+            max_tries=max_tries,
             all_progress=all_progress,
             overwrite=overwrite,
             config=session_config,
