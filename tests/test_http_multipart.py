@@ -73,9 +73,9 @@ def test_multipartserver_exceeds_max_tries(
         crash_handler, 3
     )  # server will fail from 3rd request
 
-    dm = Downloader()
+    dm = Downloader(max_tries=max_tries)
     max_tries = max_tries
-    dm.enqueue_file(multipartserver.url, path=tmp_path, max_tries=max_tries)
+    dm.enqueue_file(multipartserver.url, path=tmp_path)
     f = dm.download()
 
     assert len(f.urls) == 0
