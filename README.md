@@ -6,6 +6,10 @@
 Parallel file downloader for HTTP/HTTPS, FTP and SFTP protocols, built using Python.
 
 
+🔗[Demo](https://youtu.be/v8pWW8eO5jQ)
+🔗[Demo cont'd](https://youtu.be/v7ME6Z11KII)
+🔗[Demo cont'd](https://youtu.be/1iFGObABnO0)
+
 ### Installation
 
 ```
@@ -194,7 +198,7 @@ pymatris --quiet <urls>
 
 ### TODO
 - [ ] Add support for public key authentication for FTP and SFTP protocol handler.
-- [ ] Resolve .
+- [ ] Resolve `PytestUnraisableExceptionWarning` due to pytestservers running on separate threads. [ref](https://github.com/pytest-dev/pytest/issues/9825)
 - [ ] Add better concurrency support for FTP protocol, as `aioftp` by default allow only one data connection per client session.
 - [ ] Better error handling and logging.
 
