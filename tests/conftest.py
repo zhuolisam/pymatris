@@ -44,16 +44,16 @@ def sftp_server():
         server.shutdown()
 
 
-@pytest.fixture(scope="function")
-def ftp_server(ftpserver):
-    ftpserver.put_files(
-        {"src": str(ftp_testfile), "dest": "testfile.txt"},
-        style="url",
-        anon=False,
-        overwrite=True,
-    )
+# @pytest.fixture(scope="function")
+# def ftp_server(ftpserver):
+#     ftpserver.put_files(
+#         {"src": str(ftp_testfile), "dest": "testfile.txt"},
+#         style="url",
+#         anon=False,
+#         overwrite=True,
+#     )
 
-    return ftpserver
+#     return ftpserver
 
 
 def validate_test_file(f, shasum):
