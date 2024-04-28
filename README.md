@@ -85,18 +85,6 @@ print(results)
 
 ```
 
-
-```
-dl = Downloader(
-    max_parallel=5,
-    max_splits=5,
-    overwrite=False,
-    dir="./",
-    all_progress=True
-)
-```
-
-
 ### Advanced Usage
 Visit [main.py](https://github.com/zhuolisam/pymatris/blob/main/main.py) for advanced usage.
 

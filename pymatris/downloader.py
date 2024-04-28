@@ -33,7 +33,7 @@ class Downloader:
         max_splits: int = 5,
         max_tries: int = 5,
         all_progress: bool = True,
-        overwrite: bool = True,
+        overwrite: bool = False,
         session_config: Optional[SessionConfig] = None,
     ):
         self.config = DownloaderConfig(
